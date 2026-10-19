@@ -1,0 +1,6 @@
+{
+  "summary": "Architecture and implementation plan for dual-layer notification system in VideoCall (Android system status bar notifications with heads-up alerts and actionable buttons for incoming calls and friend requests, plus in-app real-time banners and deep-link handling).",
+  "updatedAt": "2026-10-19T07:32:24.705235207Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
