@@ -3,7 +3,10 @@ package com.example.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,24 +15,35 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,12 +53,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,14 +71,23 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.example.R
-import com.example.ui.theme.CardNavy
-import com.example.ui.theme.ElectricViolet
-import com.example.ui.theme.MidnightNavy
-import com.example.ui.theme.RoyalViolet
-import com.example.ui.theme.SlateNavy
-import com.example.ui.theme.TextPrimary
-import com.example.ui.theme.TextSecondary
-import com.example.ui.theme.VibrantCyan
+import com.example.data.SessionManager
+import com.example.ui.components.GamingButton
+import com.example.ui.components.GamingCard
+import com.example.ui.components.GamingLogo
+import com.example.ui.theme.CallRed
+import com.example.ui.theme.GamingBorder
+import com.example.ui.theme.GamingCardBg
+import com.example.ui.theme.GamingCyan
+import com.example.ui.theme.GamingDarkBg
+import com.example.ui.theme.GamingElevatedSurface
+import com.example.ui.theme.GamingErrorRed
+import com.example.ui.theme.GamingPrimaryPurple
+import com.example.ui.theme.GamingSecondaryBg
+import com.example.ui.theme.GamingSuccessGreen
+import com.example.ui.theme.GamingTextMuted
+import com.example.ui.theme.GamingTextPrimary
+import com.example.ui.theme.GamingTextSecondary
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
@@ -72,233 +98,369 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.OutlinedButton
-
 @Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit,
-    onContinueAsGuest: () -> Unit = {}
+    onContinueAsGuest: (guestUid: String?, guestName: String?) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val credentialManager = remember { CredentialManager.create(context) }
+    val sessionManager = remember { SessionManager(context) }
+
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Dialog sheets
+    var showGuestUidDialog by remember { mutableStateOf(false) }
+
+    // Guest UID inputs
+    var guestUidInput by remember { mutableStateOf(sessionManager.userId) }
+    var guestGamerNameInput by remember { mutableStateOf("") }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(MidnightNavy, SlateNavy, MidnightNavy)
+            .background(GamingDarkBg)
+    ) {
+        // Futuristic background glow
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        GamingPrimaryPurple.copy(alpha = 0.25f),
+                        Color.Transparent
+                    ),
+                    center = Offset(w * 0.5f, h * 0.22f),
+                    radius = w * 0.7f
                 )
             )
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
+        }
+
         Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxWidth()
+            verticalArrangement = Arrangement.Center
         ) {
-            // App Logo Icon
-            Box(
-                modifier = Modifier
-                    .size(96.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(RoyalViolet, VibrantCyan)
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Videocam,
-                    contentDescription = "VideoCall Logo",
-                    tint = Color.White,
-                    modifier = Modifier.size(54.dp)
-                )
-            }
+            Spacer(modifier = Modifier.height(20.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+            // Gaming VC Logo
+            GamingLogo(
+                iconSize = 100.dp,
+                showTagline = false
+            )
 
+            Spacer(modifier = Modifier.height(28.dp))
+
+            // Heading & Subtitle
             Text(
-                text = stringResource(R.string.app_name),
-                fontSize = 32.sp,
+                text = "Welcome Back",
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary,
+                color = GamingTextPrimary,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = stringResource(R.string.welcome_subtitle),
-                fontSize = 15.sp,
-                color = TextSecondary,
-                textAlign = TextAlign.Center,
-                lineHeight = 22.sp,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                text = "Sign in to continue",
+                fontSize = 14.sp,
+                color = GamingTextSecondary,
+                textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Auth Card
-            Card(
-                colors = CardDefaults.cardColors(containerColor = CardNavy),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "Sign In to Continue",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = TextPrimary
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "Fast, secure Google Sign-In with real-time room synchronization",
-                        fontSize = 13.sp,
-                        color = TextSecondary,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Button(
-                        onClick = {
-                            isLoading = true
-                            errorMessage = null
-                            startGoogleSignIn(
-                                context = context,
-                                credentialManager = credentialManager,
-                                scope = coroutineScope,
-                                onAuthSuccess = {
-                                    isLoading = false
-                                    onAuthSuccess()
-                                },
-                                onAuthError = { msg ->
-                                    isLoading = false
-                                    errorMessage = msg
-                                },
-                                onAuthCancelled = {
-                                    isLoading = false
-                                }
-                            )
+            // Button 1: Continue with Google
+            Button(
+                onClick = {
+                    isLoading = true
+                    errorMessage = null
+                    startGoogleSignIn(
+                        context = context,
+                        credentialManager = credentialManager,
+                        scope = coroutineScope,
+                        onAuthSuccess = {
+                            isLoading = false
+                            onAuthSuccess()
                         },
-                        enabled = !isLoading,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ElectricViolet,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .testTag("google_sign_in_button")
-                    ) {
-                        if (isLoading) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
-                                color = Color.White,
-                                strokeWidth = 2.dp
-                            )
-                        } else {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = stringResource(R.string.sign_in_with_google),
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
+                        onAuthError = { err ->
+                            isLoading = false
+                            errorMessage = err
+                        },
+                        onAuthCancelled = {
+                            isLoading = false
                         }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedButton(
-                        onClick = { onContinueAsGuest() },
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = VibrantCyan
-                        ),
-                        border = BorderStroke(1.dp, VibrantCyan.copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(12.dp),
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .testTag("google_signin_button"),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White,
+                    contentColor = Color(0xFF1F2937)
+                )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    // Google "G" icon mark
+                    Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .testTag("continue_as_guest_button")
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color.White),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        Text(
+                            text = "G",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF4285F4)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = "Continue with Google",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF1F2937)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Button 2: Continue with Guest UID
+            Button(
+                onClick = {
+                    showGuestUidDialog = true
+                    errorMessage = null
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .testTag("guest_uid_signin_button"),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = GamingCardBg,
+                    contentColor = GamingTextPrimary
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, GamingBorder)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(GamingPrimaryPurple.copy(alpha = 0.25f)),
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Person,
+                                imageVector = Icons.Default.SportsEsports,
                                 contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                tint = VibrantCyan
+                                tint = GamingCyan,
+                                modifier = Modifier.size(19.dp)
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
                             Text(
-                                text = stringResource(R.string.continue_as_guest),
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = VibrantCyan
+                                text = "Continue with Guest UID",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GamingTextPrimary
+                            )
+                            Text(
+                                text = "UID: $guestUidInput",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = GamingCyan
                             )
                         }
                     }
-
-                    if (errorMessage != null) {
-                        Spacer(modifier = Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(GamingElevatedSurface)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
                         Text(
-                            text = errorMessage ?: "",
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 13.sp,
-                            textAlign = TextAlign.Center
+                            text = "Play",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GamingSuccessGreen
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Trust badge
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            // Guest option
+            TextButton(
+                onClick = {
+                    onContinueAsGuest(guestUidInput, guestGamerNameInput.ifBlank { null })
+                },
+                modifier = Modifier.testTag("continue_as_guest_button")
             ) {
-                Icon(
-                    imageVector = Icons.Default.Security,
-                    contentDescription = null,
-                    tint = TextSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "End-to-end encrypted signaling",
-                    fontSize = 12.sp,
-                    color = TextSecondary
+                    text = "Fast Play as Guest ($guestUidInput)",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = GamingTextMuted
                 )
             }
+
+            if (isLoading) {
+                Spacer(modifier = Modifier.height(16.dp))
+                CircularProgressIndicator(
+                    color = GamingCyan,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+
+            if (errorMessage != null) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = errorMessage ?: "",
+                    color = GamingErrorRed,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
         }
+    }
+
+    // Guest UID & Squad Identity Dialog
+    if (showGuestUidDialog) {
+        AlertDialog(
+            onDismissRequest = { showGuestUidDialog = false },
+            containerColor = GamingSecondaryBg,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.SportsEsports,
+                        contentDescription = null,
+                        tint = GamingCyan,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Guest Squad Identity",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GamingTextPrimary
+                    )
+                }
+            },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "Jump directly into voice rooms and live squads without signing up. Your Guest UID uniquely identifies you.",
+                        fontSize = 12.sp,
+                        color = GamingTextSecondary,
+                        lineHeight = 17.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    OutlinedTextField(
+                        value = guestUidInput,
+                        onValueChange = { guestUidInput = it },
+                        label = { Text("Guest UID", color = GamingTextSecondary) },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    guestUidInput = sessionManager.generateNewGuestUid()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Generate New UID",
+                                    tint = GamingCyan
+                                )
+                            }
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GamingCyan,
+                            unfocusedBorderColor = GamingBorder,
+                            focusedTextColor = GamingTextPrimary,
+                            unfocusedTextColor = GamingTextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = guestGamerNameInput,
+                        onValueChange = { guestGamerNameInput = it },
+                        label = { Text("Gamer Tag / Display Name", color = GamingTextSecondary) },
+                        placeholder = { Text("e.g. NeonHunter", color = GamingTextMuted) },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GamingPrimaryPurple,
+                            unfocusedBorderColor = GamingBorder,
+                            focusedTextColor = GamingTextPrimary,
+                            unfocusedTextColor = GamingTextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Tap the roll icon to randomize your Gaming UID",
+                        fontSize = 11.sp,
+                        color = GamingTextMuted
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val finalUid = guestUidInput.trim().ifBlank { sessionManager.userId }
+                        val finalName = guestGamerNameInput.trim().ifBlank { null }
+                        showGuestUidDialog = false
+                        onContinueAsGuest(finalUid, finalName)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GamingCyan),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = "Enter Gaming VC",
+                        color = Color.Black,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showGuestUidDialog = false }) {
+                    Text("Cancel", color = GamingTextSecondary)
+                }
+            }
+        )
     }
 }
 
@@ -333,7 +495,7 @@ fun startGoogleSignIn(
                 onAuthError("Unexpected credential type")
             }
         } catch (e: GetCredentialCancellationException) {
-            Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
+            Log.w("Auth", "Google Sign-In flow cancelled: ${e.message}", e)
             onAuthCancelled()
         } catch (e: Exception) {
             Log.e("Auth", "Google Sign-In failed", e)

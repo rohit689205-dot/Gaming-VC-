@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">VideoCall</string>
+    <string name="app_name">Gaming VC</string>
     <string name="welcome_headline">Connect face-to-face from anywhere</string>
     <string name="welcome_subtitle">Crystal-clear video conferencing with real-time audio, lobby preview, dynamic multi-participant grid, and in-room chat.</string>
     <string name="sign_in_with_google">Sign in with Google</string>

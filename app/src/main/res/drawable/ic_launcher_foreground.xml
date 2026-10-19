@@ -6,54 +6,90 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Camera Body with subtle shadow / glow -->
-    <path
-        android:pathData="M34,36 L62,36 A8,8 0 0 1 70,44 L70,64 A8,8 0 0 1 62,72 L34,72 A8,8 0 0 1 26,64 L26,44 A8,8 0 0 1 34,36 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="26"
-                android:startY="36"
-                android:endX="70"
-                android:endY="72"
-                android:type="linear">
-                <item android:offset="0" android:color="#8B5CF6" />
-                <item android:offset="1" android:color="#06B6D4" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Camera Lens / Projector Cone -->
-    <path
-        android:pathData="M70,47 L82,39 A3,3 0 0 1 86,41.5 L86,66.5 A3,3 0 0 1 82,69 L70,61 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="70"
-                android:startY="47"
-                android:endX="86"
-                android:endY="69"
-                android:type="linear">
-                <item android:offset="0" android:color="#7C3AED" />
-                <item android:offset="1" android:color="#38BDF8" />
-            </gradient>
-        </aapt:attr>
-    </path>
-
-    <!-- Inner Camera Lens Aperture Ring -->
+    <!-- Headset Band Arch -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:strokeAlpha="0.9"
-        android:pathData="M48,54m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M32,54 C32,36 41,27 54,27 C67,27 76,36 76,54">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="32"
+                android:startY="27"
+                android:endX="76"
+                android:endY="54"
+                android:type="linear">
+                <item android:offset="0" android:color="#20D9FF" />
+                <item android:offset="1" android:color="#8B35FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Lens Glass Center -->
+    <!-- Headset Ear Cushions -->
     <path
-        android:fillColor="#0F172A"
-        android:pathData="M48,54m-5,0a5,5 0,1 1,10 0a5,5 0,1 1,-10 0" />
+        android:pathData="M28,49 L34,49 A3,3 0 0 1 37,52 L37,62 A3,3 0 0 1 34,65 L28,65 A3,3 0 0 1 25,62 L25,52 A3,3 0 0 1 28,49 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="25"
+                android:startY="49"
+                android:endX="37"
+                android:endY="65"
+                android:type="linear">
+                <item android:offset="0" android:color="#20D9FF" />
+                <item android:offset="1" android:color="#168BFF" />
+            </gradient>
+        </aapt:attr>
+    </path>
 
-    <!-- Live Recording / Active Signal Dot -->
     <path
-        android:fillColor="#10B981"
-        android:pathData="M34,43m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+        android:pathData="M74,49 L80,49 A3,3 0 0 1 83,52 L83,62 A3,3 0 0 1 80,65 L74,65 A3,3 0 0 1 71,62 L71,52 A3,3 0 0 1 74,49 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="71"
+                android:startY="49"
+                android:endX="83"
+                android:endY="65"
+                android:type="linear">
+                <item android:offset="0" android:color="#8B35FF" />
+                <item android:offset="1" android:color="#6547FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Gamepad Controller Body -->
+    <path
+        android:pathData="M38,50 L70,50 C77,50 82,56 79,68 L76,77 C74,82 68,82 64,77 L59,71 L49,71 L44,77 C40,82 34,82 32,77 L29,68 C26,56 31,50 38,50 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="27"
+                android:startY="50"
+                android:endX="81"
+                android:endY="80"
+                android:type="linear">
+                <item android:offset="0" android:color="#6547FF" />
+                <item android:offset="0.5" android:color="#168BFF" />
+                <item android:offset="1" android:color="#20D9FF" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- D-Pad Plus on Controller Left -->
+    <path
+        android:fillColor="#F6F8FF"
+        android:pathData="M41,58 L45,58 L45,54 L47,54 L47,58 L51,58 L51,60 L47,60 L47,64 L45,64 L45,60 L41,60 Z" />
+
+    <!-- Action Buttons on Controller Right -->
+    <path
+        android:fillColor="#20D9FF"
+        android:pathData="M65,56m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+    <path
+        android:fillColor="#FF4567"
+        android:pathData="M61,60m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+    <path
+        android:fillColor="#00D6A0"
+        android:pathData="M69,60m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+    <path
+        android:fillColor="#FFB800"
+        android:pathData="M65,64m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
 
 </vector>

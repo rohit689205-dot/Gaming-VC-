@@ -1,6 +1,6 @@
 {
-  "summary": "Architecture and implementation plan for dual-layer notification system in VideoCall (Android system status bar notifications with heads-up alerts and actionable buttons for incoming calls and friend requests, plus in-app real-time banners and deep-link handling).",
-  "updatedAt": "2026-10-19T07:32:24.705235207Z",
+  "summary": "Plan to build the dedicated RoomLobby component with live CameraX preview feed and Join Call button, replace Popular Rooms with dynamic Recently Joined Rooms on DashboardScreen, and ensure error-free camera and session lifecycle.",
+  "updatedAt": "2026-10-19T08:37:00.382013802Z",
   "requestFeedback": true,
   "userFacing": true
 }

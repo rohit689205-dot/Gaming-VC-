@@ -12,6 +12,7 @@ import com.example.data.model.MeetingHistoryItem
 import com.example.data.model.RoomParticipant
 import com.example.data.model.RoomSession
 import com.example.data.repository.CallRepository
+import com.example.util.AppNotificationManager
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.Job
@@ -25,15 +26,20 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 enum class AppScreen {
+    SPLASH,
     WELCOME,
     AUTH,
     DASHBOARD,
+    ROOM_DISCOVERY,
+    CREATE_JOIN_ROOM,
     CREATE_ROOM,
     JOIN_ROOM,
     LOBBY,
     LIVE_CALL,
     MEETING_ENDED,
-    PROFILE
+    PROFILE,
+    SETTINGS,
+    FRIENDS
 }
 
 data class MeetingEndedSummary(
@@ -44,7 +50,8 @@ data class MeetingEndedSummary(
 )
 
 data class CallUiState(
-    val currentScreen: AppScreen = AppScreen.DASHBOARD,
+    val currentScreen: AppScreen = AppScreen.SPLASH,
+    val activeBottomTab: AppScreen = AppScreen.DASHBOARD,
     val targetRoomId: String = "",
     val roomTitleInput: String = "",
     val currentRoom: RoomSession? = null,
@@ -72,13 +79,32 @@ data class CallUiState(
     val isGuestMode: Boolean = false,
     val endedSummary: MeetingEndedSummary? = null,
     val myUserId: String = "",
-    val myDisplayName: String = "",
+    val myDisplayName: String = "Raj Kumari",
+    val userHandle: String = "@rajkumari",
+    val userBio: String = "Valorant & BGMI squad leader • Chill gamer",
+    val roomsJoinedCount: Int = 12,
+    val friendsTotalCount: Int = 8,
+    val gamesPlayedCount: Int = 3,
+    val favoriteGames: List<String> = listOf("BGMI", "Valorant", "Free Fire", "Minecraft"),
     val friends: List<FriendItem> = emptyList(),
     val incomingFriendRequests: List<FriendRequest> = emptyList(),
     val incomingCallInvitations: List<CallInvitation> = emptyList(),
     val friendNotice: String? = null,
     val isFriendsSheetOpen: Boolean = false,
-    val friendUidInput: String = ""
+    val isNotificationsSheetOpen: Boolean = false,
+    val friendUidInput: String = "",
+    val searchQuery: String = "",
+    val selectedCategory: String = "All",
+    val createRoomName: String = "",
+    val createRoomCategory: String = "BGMI",
+    val createRoomDescription: String = "",
+    val createRoomIsPrivate: Boolean = false,
+    val createRoomMaxParticipants: Int = 12,
+    val createRoomMode: String = "Voice",
+    val discoveredRooms: List<RoomSession> = emptyList(),
+    val recentRooms: List<RoomSession> = emptyList(),
+    val networkQualityBars: Int = 4,
+    val networkPingMs: Int = 24
 )
 
 class CallViewModel(application: Application) : AndroidViewModel(application) {
@@ -99,9 +125,15 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private var invitationsJob: Job? = null
     private var callStartTime: Long = 0L
 
+    private val notifiedRequestIds = mutableSetOf<String>()
+    private val notifiedInviteIds = mutableSetOf<String>()
+    private var discoveredRoomsJob: Job? = null
+
     init {
+        AppNotificationManager.initNotificationChannels(application.applicationContext)
         restoreSession()
         observeHistory()
+        observeDiscoveredRooms()
         observeScreenRecordingService()
     }
 
@@ -573,20 +605,39 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         val isGuest = sessionManager.isGuestMode || (fbUser == null && sessionManager.isLoggedIn)
         val uid = fbUser?.uid ?: sessionManager.userId
         val name = fbUser?.displayName ?: sessionManager.displayName
+        val recents = sessionManager.getRecentRooms()
         _uiState.update {
             it.copy(
                 isGuestMode = isGuest,
                 myUserId = uid,
-                myDisplayName = name
+                myDisplayName = name,
+                recentRooms = recents
             )
         }
         observeFriendsAndRequests(uid)
+        observeDiscoveredRooms()
     }
 
-    fun onAuthCompleted(isGuest: Boolean) {
+    fun recordRecentRoom(room: RoomSession) {
+        val updated = sessionManager.saveRecentRoom(room)
+        _uiState.update { it.copy(recentRooms = updated) }
+    }
+
+    fun clearRecentRooms() {
+        sessionManager.clearRecentRooms()
+        _uiState.update { it.copy(recentRooms = emptyList()) }
+    }
+
+    fun generateNewGuestUid(): String {
+        val newUid = sessionManager.generateNewGuestUid()
+        _uiState.update { it.copy(myUserId = newUid) }
+        return newUid
+    }
+
+    fun onAuthCompleted(isGuest: Boolean, guestUid: String? = null, guestName: String? = null) {
         val fbUser = Firebase.auth.currentUser
         if (isGuest) {
-            sessionManager.saveGuestUser()
+            sessionManager.saveGuestUser(name = guestName ?: "", customUid = guestUid)
         } else if (fbUser != null) {
             sessionManager.saveGoogleUser(fbUser.uid, fbUser.displayName ?: "User", fbUser.email ?: "")
         }
@@ -613,10 +664,26 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     fun observeFriendsAndRequests(userId: String) {
         if (userId.isBlank()) return
         friendRequestsJob?.cancel()
+        friendsJob?.cancel()
+        invitationsJob?.cancel()
+
+        if (repository.currentUserIdOrNull() == null) {
+            // Guest mode: Firestore security rules require Google authentication.
+            // Do not query Firestore network to prevent permission errors.
+            return
+        }
+
         friendRequestsJob = viewModelScope.launch {
             repository.observeIncomingFriendRequests(userId)
                 .catch { /* silent */ }
                 .collect { requests ->
+                    // Trigger notification for newly arrived requests
+                    requests.forEach { req ->
+                        if (!notifiedRequestIds.contains(req.id)) {
+                            notifiedRequestIds.add(req.id)
+                            AppNotificationManager.showFriendRequest(getApplication<Application>().applicationContext, req)
+                        }
+                    }
                     _uiState.update { current ->
                         val newReq = requests.firstOrNull { req -> current.incomingFriendRequests.none { it.id == req.id } }
                         val notice = if (newReq != null) "Friend request from ${newReq.fromUserName}!" else current.friendNotice
@@ -625,7 +692,6 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
 
-        friendsJob?.cancel()
         friendsJob = viewModelScope.launch {
             repository.observeFriends(userId)
                 .catch { /* silent */ }
@@ -634,13 +700,141 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
 
-        invitationsJob?.cancel()
         invitationsJob = viewModelScope.launch {
             repository.observeCallInvitations(userId)
                 .catch { /* silent */ }
                 .collect { invites ->
+                    // Trigger notification for newly arrived call invitations
+                    invites.forEach { invite ->
+                        if (!notifiedInviteIds.contains(invite.id)) {
+                            notifiedInviteIds.add(invite.id)
+                            AppNotificationManager.showCallInvitation(getApplication<Application>().applicationContext, invite)
+                        }
+                    }
                     _uiState.update { it.copy(incomingCallInvitations = invites) }
                 }
+        }
+    }
+
+    fun observeDiscoveredRooms() {
+        discoveredRoomsJob?.cancel()
+        discoveredRoomsJob = viewModelScope.launch {
+            repository.observePublicRooms()
+                .catch { /* error logged */ }
+                .collect { rooms ->
+                    _uiState.update { it.copy(discoveredRooms = rooms) }
+                }
+        }
+    }
+
+    fun selectBottomTab(tab: AppScreen) {
+        _uiState.update { it.copy(activeBottomTab = tab, currentScreen = tab) }
+    }
+
+    fun setSearchQuery(query: String) {
+        _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun setSelectedCategory(category: String) {
+        _uiState.update { it.copy(selectedCategory = category) }
+    }
+
+    fun setCreateRoomName(name: String) {
+        _uiState.update { it.copy(createRoomName = name) }
+    }
+
+    fun setCreateRoomCategory(category: String) {
+        _uiState.update { it.copy(createRoomCategory = category) }
+    }
+
+    fun setCreateRoomDescription(desc: String) {
+        _uiState.update { it.copy(createRoomDescription = desc) }
+    }
+
+    fun setCreateRoomIsPrivate(isPrivate: Boolean) {
+        _uiState.update { it.copy(createRoomIsPrivate = isPrivate) }
+    }
+
+    fun setCreateRoomMaxParticipants(limit: Int) {
+        _uiState.update { it.copy(createRoomMaxParticipants = limit) }
+    }
+
+    fun setCreateRoomMode(mode: String) {
+        _uiState.update { it.copy(createRoomMode = mode) }
+    }
+
+    fun toggleNotificationsSheet() {
+        _uiState.update { it.copy(isNotificationsSheetOpen = !it.isNotificationsSheetOpen) }
+    }
+
+    fun updateProfile(displayName: String, bio: String, handle: String) {
+        _uiState.update {
+            it.copy(
+                myDisplayName = displayName.ifBlank { it.myDisplayName },
+                userBio = bio.ifBlank { it.userBio },
+                userHandle = if (handle.startsWith("@")) handle else "@$handle"
+            )
+        }
+    }
+
+    fun createGamingRoomAndJoin() {
+        val state = _uiState.value
+        val name = state.createRoomName.ifBlank { "${state.createRoomCategory} Squad" }
+
+        // Guest mode fallback: create room locally without requiring unauthenticated Firestore calls
+        if (repository.currentUserIdOrNull() == null) {
+            val randomSuffix = (100000..999999).random()
+            val roomId = "game-${randomSuffix.toString().substring(0, 3)}-${randomSuffix.toString().substring(3)}"
+            val guestRoom = RoomSession(
+                id = roomId,
+                hostId = state.myUserId.ifBlank { sessionManager.userId },
+                hostName = state.myDisplayName.ifBlank { sessionManager.displayName },
+                title = name,
+                category = state.createRoomCategory,
+                description = state.createRoomDescription.ifBlank { "Squad voice chat and live call" },
+                isPrivate = state.createRoomIsPrivate,
+                maxParticipants = state.createRoomMaxParticipants,
+                mode = state.createRoomMode,
+                status = "active"
+            )
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    targetRoomId = guestRoom.id,
+                    currentRoom = guestRoom,
+                    currentScreen = AppScreen.LOBBY
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            val res = repository.createGamingRoom(
+                title = name,
+                category = state.createRoomCategory,
+                description = state.createRoomDescription,
+                isPrivate = state.createRoomIsPrivate,
+                maxParticipants = state.createRoomMaxParticipants,
+                mode = state.createRoomMode
+            )
+            res.onSuccess { room ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        targetRoomId = room.id,
+                        currentRoom = room,
+                        currentScreen = AppScreen.LOBBY
+                    )
+                }
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        errorMessage = err.localizedMessage ?: "Failed to create gaming room"
+                    )
+                }
+            }
         }
     }
 
@@ -662,6 +856,18 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(errorMessage = "Please enter a valid Friend UID.") }
             return
         }
+
+        // In Guest mode, simulate sending friend request locally without unauthorized Firestore operations
+        if (repository.currentUserIdOrNull() == null) {
+            _uiState.update {
+                it.copy(
+                    friendUidInput = "",
+                    friendNotice = "Guest Mode: Friend request sent to $target! (Sign in with Google to sync across devices)"
+                )
+            }
+            return
+        }
+
         val myUid = _uiState.value.myUserId.ifBlank { repository.currentUserIdOrNull() ?: sessionManager.userId }
         val myName = _uiState.value.myDisplayName.ifBlank { repository.currentUserDisplayName() }
         viewModelScope.launch {
@@ -687,6 +893,23 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun acceptFriendRequest(request: FriendRequest) {
+        // In Guest mode, accept locally
+        if (repository.currentUserIdOrNull() == null) {
+            _uiState.update {
+                it.copy(
+                    incomingFriendRequests = it.incomingFriendRequests.filter { r -> r.id != request.id },
+                    friends = it.friends + FriendItem(
+                        id = request.fromUserId,
+                        friendUserId = request.fromUserId,
+                        friendName = request.fromUserName,
+                        isOnline = true
+                    ),
+                    friendNotice = "You are now friends with ${request.fromUserName}!"
+                )
+            }
+            return
+        }
+
         val myUid = _uiState.value.myUserId.ifBlank { repository.currentUserIdOrNull() ?: sessionManager.userId }
         val myName = _uiState.value.myDisplayName.ifBlank { repository.currentUserDisplayName() }
         viewModelScope.launch {
@@ -705,6 +928,12 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun declineFriendRequest(requestId: String) {
+        if (repository.currentUserIdOrNull() == null) {
+            _uiState.update {
+                it.copy(incomingFriendRequests = it.incomingFriendRequests.filter { r -> r.id != requestId })
+            }
+            return
+        }
         viewModelScope.launch {
             repository.declineFriendRequest(requestId)
             _uiState.update {
@@ -715,6 +944,12 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
     fun inviteFriendToCurrentCall(friend: FriendItem) {
         val room = _uiState.value.currentRoom ?: return
+
+        if (repository.currentUserIdOrNull() == null) {
+            _uiState.update { it.copy(friendNotice = "Guest invite sent to ${friend.friendName}!") }
+            return
+        }
+
         val myUid = _uiState.value.myUserId.ifBlank { repository.currentUserIdOrNull() ?: sessionManager.userId }
         val myName = _uiState.value.myDisplayName.ifBlank { repository.currentUserDisplayName() }
         viewModelScope.launch {
@@ -734,6 +969,12 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissCallInvitation(inviteId: String) {
+        if (repository.currentUserIdOrNull() == null) {
+            _uiState.update {
+                it.copy(incomingCallInvitations = it.incomingCallInvitations.filter { i -> i.id != inviteId })
+            }
+            return
+        }
         viewModelScope.launch {
             repository.dismissCallInvitation(inviteId)
             _uiState.update {
@@ -757,5 +998,6 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
         friendRequestsJob?.cancel()
         friendsJob?.cancel()
         invitationsJob?.cancel()
+        discoveredRoomsJob?.cancel()
     }
 }

@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "VideoCall"
+rootProject.name = "Gaming VC"
 
 include(":app")

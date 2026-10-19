@@ -54,9 +54,19 @@ class SessionManager(context: Context) {
             .apply()
     }
 
-    fun saveGuestUser(name: String = "") {
+    fun generateNewGuestUid(): String {
+        val shortId = (100000..999999).random().toString()
+        val newUid = "guest_$shortId"
+        userId = newUid
+        return newUid
+    }
+
+    fun saveGuestUser(name: String = "", customUid: String? = null) {
+        if (!customUid.isNullOrBlank()) {
+            userId = customUid.trim()
+        }
         val currentUid = userId
-        val formattedName = if (name.isNotBlank()) name else "Guest (${currentUid.takeLast(4)})"
+        val formattedName = if (name.isNotBlank()) name.trim() else "Guest (${currentUid.takeLast(4)})"
         prefs.edit()
             .putBoolean(KEY_IS_LOGGED_IN, true)
             .putBoolean(KEY_IS_GUEST_MODE, true)
@@ -71,5 +81,66 @@ class SessionManager(context: Context) {
             .remove(KEY_DISPLAY_NAME)
             .remove(KEY_EMAIL)
             .apply()
+    }
+
+    fun getRecentRooms(): List<com.example.data.model.RoomSession> {
+        val jsonStr = prefs.getString("key_recent_rooms", null)
+        if (jsonStr.isNullOrBlank()) {
+            return emptyList()
+        }
+        return try {
+            val jsonArray = org.json.JSONArray(jsonStr)
+            val list = mutableListOf<com.example.data.model.RoomSession>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    com.example.data.model.RoomSession(
+                        id = obj.optString("id"),
+                        hostId = obj.optString("hostId"),
+                        hostName = obj.optString("hostName"),
+                        title = obj.optString("title"),
+                        category = obj.optString("category", "General"),
+                        description = obj.optString("description"),
+                        maxParticipants = obj.optInt("maxParticipants", 12),
+                        mode = obj.optString("mode", "Voice"),
+                        coverTag = obj.optString("coverTag", "general"),
+                        status = obj.optString("status", "active")
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun clearRecentRooms() {
+        prefs.edit().remove("key_recent_rooms").apply()
+    }
+
+    fun saveRecentRoom(room: com.example.data.model.RoomSession): List<com.example.data.model.RoomSession> {
+        val current = getRecentRooms().toMutableList()
+        current.removeAll { it.id == room.id }
+        current.add(0, room)
+        val trimmed = current.take(10)
+        try {
+            val jsonArray = org.json.JSONArray()
+            for (item in trimmed) {
+                val obj = org.json.JSONObject()
+                obj.put("id", item.id)
+                obj.put("hostId", item.hostId)
+                obj.put("hostName", item.hostName)
+                obj.put("title", item.title)
+                obj.put("category", item.category)
+                obj.put("description", item.description)
+                obj.put("maxParticipants", item.maxParticipants)
+                obj.put("mode", item.mode)
+                obj.put("coverTag", item.coverTag)
+                obj.put("status", item.status)
+                jsonArray.put(obj)
+            }
+            prefs.edit().putString("key_recent_rooms", jsonArray.toString()).apply()
+        } catch (_: Exception) {}
+        return trimmed
     }
 }

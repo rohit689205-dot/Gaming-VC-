@@ -1,136 +1,50 @@
-# System Notifications & In-App Alerts for VideoCall
+# Implementation Plan: RoomLobby Component, Recent Rooms Dashboard & Error Resolution
 
-Deliver an integrated, real-time notification system covering both device-level Android status bar notifications (with high-priority heads-up alerts and direct action buttons) and in-app animated notification banners for incoming video call invitations and friend requests.
+Create a dedicated `RoomLobby` component featuring a live camera preview feed with real-time audio/video controls and a 'Join Call' action before entering the main session. Update the dashboard so that the "Popular Rooms" section is replaced with "Recent Rooms" (tracking rooms the user joins), and ensure robust error handling and lifecycle cleanup.
 
-## User Review & Critical Decisions
+## User Review Required
 
 > [!IMPORTANT]
-> Based on your selections, notifications will be delivered across two complementary tiers:
-> 1. **System Status Bar Notifications**: Using Android's `NotificationManager` with high-importance notification channels, heads-up banners, and interactive action buttons ("Join VC", "Accept", "Decline").
-> 2. **In-App Live Banners**: Animated cards appearing at the top of the Dashboard and active Video Call screen with instant 1-tap actions.
-
-- **Confirmed Channels & Priority**: High-priority channel for incoming video call invitations (`call_invitations_channel`) and default-priority channel for friend requests (`friend_requests_channel`).
-- **Confirmed Interactive Actions**: Notifications will feature actionable buttons directly on the Android notification tray (`Join VC`, `Accept`, and `Decline`).
-- **Target OS Compatibility**: Android 13+ (API 33+) runtime `POST_NOTIFICATIONS` permission integration with graceful pre-permission explanation.
+> - **Camera Preview in Lobby**: Front camera stream will start immediately when camera permission is granted. When camera is toggled off or permission is denied, an avatar placeholder with an audio wave indicator will be shown.
+> - **Recent Rooms Behavior**: The Dashboard will display "Recently Joined Rooms" populated from the user's active session history, seeded with default squad rooms ("BGMI Squad", "Valorant Chill", "Free Fire Legends", "Minecraft Builders") so the list is always populated.
 
 ---
 
-## 1. Overview & Core Concept
+## Proposed Changes
 
-### What It Does
-When a user receives a video call invitation or a friend request, the app immediately raises:
-- An **Android System Notification** in the system tray / lock screen with heads-up display and interactive buttons (`Join VC`, `Accept`, `Decline`). Tapping `Join VC` launches the app directly into the meeting lobby/call.
-- An **In-App Toast/Banner** displayed at the top of the active screen with instant response controls, ensuring users never miss a call while inside or outside the app.
+### 1. Dedicated `RoomLobby` Component (`LobbyScreen.kt` & `GamingComponents.kt`)
+- Build a reusable `RoomLobby` composable:
+  - **Camera Preview Surface**: Uses `AndroidView` with CameraX `PreviewView`, front camera by default, and responsive aspect ratio.
+  - **Live Controls Overlay**: Mute/unmute microphone button, camera on/off toggle, and camera flip/switch button.
+  - **Interactive 'Join Call' Button**: Primary gradient action button with loading state that joins the room session and transitions to `LiveCallScreen`.
+  - **Room Details & Squad Info**: Displays room title, category badge, live participant count, and participant avatars.
+  - **Safe Lifecycle Management**: Releases `CameraManager` on disposal or when navigating back to avoid camera resource leaks.
 
-### Target Audience & Persona
-- Call hosts and participants collaborating in real-time who need immediate, interruptive alerts when invited to an active video meeting or connected with a colleague.
+### 2. Dashboard: Replace "Popular Rooms" with "Recent Rooms" (`DashboardScreen.kt` & `CallViewModel.kt`)
+- Update `DashboardScreen.kt`:
+  - Rename the section header from "Popular Rooms" to "Recent Rooms".
+  - Change the list to show recently joined rooms, with time badges (e.g., "Active now", "Joined 10m ago").
+  - Connect room card tap actions to open the `RoomLobby` preview.
+- Update `CallViewModel.kt`:
+  - Track `recentRooms: List<RoomSession>` in `CallUiState`.
+  - Add `recordRecentRoom(room: RoomSession)` when entering or creating a room.
+  - Cache recent rooms in `SessionManager` so they persist across app restarts.
 
-### Key Value
-- Zero missed meetings: eliminates the need to manually refresh or copy-paste room codes when invited by friends.
-
----
-
-## 2. User Experience & Visual Design
-
-### Key User Flows
-
-```
-[Remote User sends VC Invite / Friend Req]
-                    │
-                    ▼
-       [Firestore Real-Time Listener]
-                    │
-        ┌───────────┴───────────┐
-        ▼                       ▼
-[In-App Floating Banner]  [Android System Tray Alert]
- ├─ "Join VC" button       ├─ Heads-up notification
- ├─ "Accept" button        ├─ Action: "Join VC" / "Accept"
- └─ "Decline" button       └─ Action: "Decline"
-```
-
-1. **Incoming Video Call**:
-   - Device displays a high-priority heads-up notification with phone/video icon: *"Raj invited you to Video Call (vid-839-201)"*.
-   - User can tap **"Join VC"** directly from the notification shade to launch the app directly into that room.
-2. **Incoming Friend Request**:
-   - Device displays an alert: *"New friend request from Alex (UID: guest_492018)"*.
-   - User can tap **"Accept"** to immediately add the friend, or **"Decline"**.
-3. **In-App Floating Banner**:
-   - Styled with dark slate background (`SlateNavy`), neon accent borders (`VibrantCyan` / `ActiveGreen`), and smooth enter/exit animations (`fadeIn` + `slideInVertically`).
-
-### Visual Palette & Components
-- **Call Alert Color**: `ActiveGreen` (#10B981) for Join actions.
-- **Decline Color**: `CallRed` (#EF4444) for Decline/Cancel actions.
-- **Brand Accents**: `RoyalViolet` (#6366F1) and `VibrantCyan` (#06B6D4).
-- **Notification Icons**: Clean Material vector icons (`ic_videocam`, `ic_person_add`, `ic_call`).
+### 3. Error Prevention & Quality Fixes
+- Fix any potential permissions crashes by providing clear rationale and in-lobby permission request buttons for Camera and Microphone.
+- Ensure camera preview properly pauses/resumes with Android lifecycle events.
+- Validate that all unit and Robolectric tests pass (`gradle :app:testDebugUnitTest`).
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## Verification Plan
 
-- **Decision 1: Native Notification Channels & PendingIntents**
-  - *Chosen Approach*: Create two distinct `NotificationChannel`s (`CALL_CHANNEL_ID` with `IMPORTANCE_HIGH` and `FRIEND_CHANNEL_ID` with `IMPORTANCE_DEFAULT`). Use `PendingIntent.getActivity` with explicit intent extras (`ACTION_JOIN_ROOM`, `EXTRA_ROOM_ID`).
-  - *Why*: High importance allows incoming call notifications to display as heads-up popups on top of other apps or lock screen.
-  - *Alternatives Considered*: Standard Toast only (insufficient when app is in background).
+### Automated Tests
+- Run `gradle :app:testDebugUnitTest` to verify unit and Robolectric tests.
+- Run `compile_applet` to verify compilation.
 
-- **Decision 2: Seamless Deep-Link Intent Handling in MainActivity**
-  - *Chosen Approach*: Handle incoming action intents in `MainActivity.onCreate` and `MainActivity.onNewIntent`. When an action button like "Join VC" is clicked from the system notification, `MainActivity` immediately signals `CallViewModel.prepareJoinRoom(roomId)`.
-  - *Why*: Frictionless 1-tap join experience straight from the lock screen or notification shade.
-
-- **Decision 3: Deduping and Lifecycle-Aware Alerts**
-  - *Chosen Approach*: Maintain a local registry of active notification IDs so repeated Firestore snapshot emissions don't trigger duplicate chimes or duplicate tray entries.
-
----
-
-## 4. Technical Architecture & Implementation Strategy
-
-### System Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CallRepository                           │
-│  - observeIncomingFriendRequests()                          │
-│  - observeCallInvitations()                                 │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ Flow emissions
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      CallViewModel                          │
-│  - Tracks new incoming IDs                                  │
-│  - Calls AppNotificationManager.notifyIncomingCall()        │
-│  - Calls AppNotificationManager.notifyFriendRequest()       │
-└──────────────┬───────────────────────────────┬──────────────┘
-               │                               │
-               ▼                               ▼
-┌──────────────────────────────┐┌──────────────────────────────┐
-│    AppNotificationManager    ││   Compose In-App Banners     │
-│ - NotificationCompat.Builder ││ - AnimatedVisibility cards   │
-│ - Channels: CALLS & FRIENDS  ││ - Top of Dashboard & LiveCall│
-│ - Action PendingIntents      ││ - 1-tap Accept/Decline/Join  │
-└──────────────┬───────────────┘└──────────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────────────────────────┐
-│             MainActivity (Intent Dispatcher)                │
-│  - Reads ACTION_JOIN_ROOM & EXTRA_ROOM_ID                   │
-│  - Routes user directly to Lobby/Live Call                  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Component Breakdown
-
-1. **`AppNotificationManager.kt`**:
-   - `createNotificationChannels(context)`: Registers `calls_channel` and `friends_channel`.
-   - `showCallInvitation(context, invitation)`: Dispatches notification with `Join VC` and `Dismiss` actions.
-   - `showFriendRequest(context, request)`: Dispatches notification with `Accept` and `Decline` actions.
-   - `cancelNotification(context, notificationId)`.
-
-2. **`MainActivity.kt`**:
-   - Runtime `POST_NOTIFICATIONS` permission check on launch.
-   - Handles `Intent` extras from notification taps to auto-join rooms or open the friends tab.
-
-3. **`CallViewModel.kt`**:
-   - Triggers `AppNotificationManager` whenever a new call invitation or friend request is received.
-   - Clears notifications when an invite or request is accepted/dismissed in-app.
-
-4. **In-App Banners (`DashboardScreen.kt` & `LiveCallScreen.kt`)**:
-   - Visual parity with system notifications, ensuring consistent UX whether inside the app or multi-tasking.
+### Manual Verification
+1. Navigate to any room from Dashboard ("Recent Rooms") or Room Discovery -> confirm `RoomLobby` opens.
+2. Verify camera preview appears with front camera feed and controls (mic toggle, camera toggle, switch lens).
+3. Tap 'Join Call' -> verify smooth transition into `LiveCallScreen`.
+4. Verify Dashboard displays "Recent Rooms" with the latest room joined.

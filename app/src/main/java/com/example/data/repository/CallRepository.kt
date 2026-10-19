@@ -101,6 +101,70 @@ class CallRepository(
         }
     }
 
+    suspend fun createGamingRoom(
+        title: String,
+        category: String,
+        description: String,
+        isPrivate: Boolean,
+        maxParticipants: Int,
+        mode: String
+    ): Result<RoomSession> = runCatching {
+        val uid = requireUserId()
+        val randomSuffix = (100000..999999).random()
+        val roomId = "game-${randomSuffix.toString().substring(0, 3)}-${randomSuffix.toString().substring(3)}"
+        val docRef = db.collection("rooms").document(roomId)
+
+        val roomData = mapOf(
+            "id" to roomId,
+            "hostId" to uid,
+            "hostName" to currentUserDisplayName(),
+            "title" to title.ifBlank { "Gaming Squad Room" },
+            "category" to category,
+            "description" to description.ifBlank { "Squad voice chat and live call" },
+            "isPrivate" to isPrivate,
+            "maxParticipants" to maxParticipants,
+            "mode" to mode,
+            "status" to "active",
+            "createdAt" to FieldValue.serverTimestamp(),
+            "updatedAt" to FieldValue.serverTimestamp()
+        )
+
+        try {
+            docRef.set(roomData).await()
+            RoomSession(
+                id = roomId,
+                hostId = uid,
+                hostName = currentUserDisplayName(),
+                title = title.ifBlank { "Gaming Squad Room" },
+                category = category,
+                description = description.ifBlank { "Squad voice chat and live call" },
+                isPrivate = isPrivate,
+                maxParticipants = maxParticipants,
+                mode = mode,
+                status = "active"
+            )
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.CREATE, docRef.path)
+            throw e
+        }
+    }
+
+    fun observePublicRooms(): Flow<List<RoomSession>> = flow {
+        val colRef = db.collection("rooms").whereEqualTo("status", "active")
+        emitAll(
+            colRef.snapshots().map { snapshot ->
+                snapshot.documents.mapNotNull { doc ->
+                    val room = doc.toObject(RoomSession::class.java)
+                    if (room != null && !room.isPrivate) {
+                        if (room.id.isBlank()) room.copy(id = doc.id) else room
+                    } else null
+                }
+            }.catch {
+                emit(emptyList())
+            }
+        )
+    }
+
     suspend fun getRoom(roomId: String): Result<RoomSession?> = runCatching {
         val docRef = db.collection("rooms").document(roomId)
         try {
@@ -332,11 +396,35 @@ class CallRepository(
 
     // --- Friends & Friend Requests ---
 
+    suspend fun resolveUserId(identifier: String): String {
+        val clean = identifier.trim().removePrefix("@")
+        if (clean.isBlank()) return identifier
+        
+        try {
+            val doc = db.collection("users").document(clean).get().await()
+            if (doc.exists()) return doc.id
+        } catch (_: Exception) {}
+
+        try {
+            val byUser = db.collection("users").whereEqualTo("username", clean).get().await()
+            if (!byUser.isEmpty) return byUser.documents.first().id
+        } catch (_: Exception) {}
+
+        try {
+            val byEmail = db.collection("users").whereEqualTo("email", clean).get().await()
+            if (!byEmail.isEmpty) return byEmail.documents.first().id
+        } catch (_: Exception) {}
+
+        return clean
+    }
+
     suspend fun sendFriendRequest(targetUid: String, senderName: String): Result<String> = runCatching {
         val cleanTarget = targetUid.trim()
         val myUid = currentUserIdOrNull() ?: "guest_user"
-        if (cleanTarget.isBlank()) throw IllegalArgumentException("Friend UID cannot be blank")
-        if (cleanTarget == myUid) throw IllegalArgumentException("You cannot send a friend request to yourself")
+        if (cleanTarget.isBlank()) throw IllegalArgumentException("Friend Gamer ID or UID cannot be blank")
+
+        val resolvedUid = resolveUserId(cleanTarget)
+        if (resolvedUid == myUid) throw IllegalArgumentException("You cannot send a friend request to yourself")
 
         val requestId = "req_${UUID.randomUUID().toString().take(8)}"
         val docRef = db.collection("friend_requests").document(requestId)
@@ -344,7 +432,7 @@ class CallRepository(
             "id" to requestId,
             "fromUserId" to myUid,
             "fromUserName" to senderName,
-            "toUserId" to cleanTarget,
+            "toUserId" to resolvedUid,
             "status" to "pending",
             "createdAt" to FieldValue.serverTimestamp()
         )
@@ -358,14 +446,17 @@ class CallRepository(
     }
 
     fun observeIncomingFriendRequests(myUserId: String): Flow<List<FriendRequest>> = flow {
+        if (auth.currentUser == null) {
+            emit(emptyList())
+            return@flow
+        }
         val colRef = db.collection("friend_requests")
         emitAll(
             colRef.whereEqualTo("toUserId", myUserId)
                 .whereEqualTo("status", "pending")
                 .snapshots()
                 .map { snapshot -> snapshot.toObjects(FriendRequest::class.java) }
-                .catch { error ->
-                    if (error is Exception) handleFirestoreError(error, OperationType.LIST, colRef.path)
+                .catch {
                     emit(emptyList())
                 }
         )
@@ -417,12 +508,15 @@ class CallRepository(
     }
 
     fun observeFriends(myUserId: String): Flow<List<FriendItem>> = flow {
+        if (auth.currentUser == null) {
+            emit(emptyList())
+            return@flow
+        }
         val colRef = db.collection("users").document(myUserId).collection("friends")
         emitAll(
             colRef.snapshots()
                 .map { snapshot -> snapshot.toObjects(FriendItem::class.java) }
-                .catch { error ->
-                    if (error is Exception) handleFirestoreError(error, OperationType.LIST, colRef.path)
+                .catch {
                     emit(emptyList())
                 }
         )
@@ -458,14 +552,17 @@ class CallRepository(
     }
 
     fun observeCallInvitations(myUserId: String): Flow<List<CallInvitation>> = flow {
+        if (auth.currentUser == null) {
+            emit(emptyList())
+            return@flow
+        }
         val colRef = db.collection("call_invitations")
         emitAll(
             colRef.whereEqualTo("toUserId", myUserId)
                 .whereEqualTo("status", "pending")
                 .snapshots()
                 .map { snapshot -> snapshot.toObjects(CallInvitation::class.java) }
-                .catch { error ->
-                    if (error is Exception) handleFirestoreError(error, OperationType.LIST, colRef.path)
+                .catch {
                     emit(emptyList())
                 }
         )

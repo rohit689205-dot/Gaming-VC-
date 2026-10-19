@@ -537,6 +537,12 @@ fun LiveCallScreen(
                     )
                 }
 
+                // Connection Quality Indicator (Signal Bars)
+                NetworkQualityIndicator(
+                    bars = uiState.networkQualityBars,
+                    pingMs = uiState.networkPingMs
+                )
+
                 // Top Header Leave Call Button
                 Button(
                     onClick = { showLeaveConfirmDialog = true },
@@ -1958,5 +1964,53 @@ fun ScreenShareView(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun NetworkQualityIndicator(
+    bars: Int = 4,
+    pingMs: Int = 24,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(CardNavy)
+            .padding(horizontal = 7.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        // Subtle signal bars
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+            modifier = Modifier.height(11.dp)
+        ) {
+            val barHeights = listOf(4.dp, 6.dp, 8.dp, 11.dp)
+            barHeights.forEachIndexed { index, h ->
+                val isActive = (index + 1) <= bars.coerceIn(1, 4)
+                val barColor = when {
+                    !isActive -> BorderNavy
+                    bars >= 3 -> ActiveGreen
+                    bars == 2 -> Color(0xFFFFB300)
+                    else -> CallRed
+                }
+                Box(
+                    modifier = Modifier
+                        .width(2.5.dp)
+                        .height(h)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(barColor)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.width(3.dp))
+        Text(
+            text = "${pingMs}ms",
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            color = if (bars >= 3) ActiveGreen else TextSecondary
+        )
     }
 }

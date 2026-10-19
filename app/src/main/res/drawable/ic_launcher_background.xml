@@ -14,23 +14,23 @@
                 android:endX="108"
                 android:endY="108"
                 android:type="linear">
-                <item android:offset="0" android:color="#0A0E1A" />
-                <item android:offset="0.6" android:color="#131B2E" />
-                <item android:offset="1" android:color="#1E1B4B" />
+                <item android:offset="0" android:color="#050A18" />
+                <item android:offset="0.5" android:color="#0A1228" />
+                <item android:offset="1" android:color="#0E1935" />
             </gradient>
         </aapt:attr>
     </path>
-    <!-- Subtle tech circles -->
+    <!-- Cyberpunk Hexagon & Circles -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#1E3A8A"
-        android:strokeWidth="1"
-        android:strokeAlpha="0.3"
-        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+        android:strokeColor="#20D9FF"
+        android:strokeWidth="1.2"
+        android:strokeAlpha="0.35"
+        android:pathData="M54,54m-40,0a40,40 0,1 1,80 0a40,40 0,1 1,-80 0" />
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#7C3AED"
-        android:strokeWidth="1"
-        android:strokeAlpha="0.25"
-        android:pathData="M54,54m-30,0a30,30 0,1 1,60 0a30,30 0,1 1,-60 0" />
+        android:strokeColor="#6547FF"
+        android:strokeWidth="1.5"
+        android:strokeAlpha="0.4"
+        android:pathData="M54,16 L88,34 L88,74 L54,92 L20,74 L20,34 Z" />
 </vector>
